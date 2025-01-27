@@ -9,13 +9,17 @@ uniform mat4 uViewProjection;
 
 out Surface 
 {
-	vec3 Normal;
+	vec3 WorldPos;
+	vec3 WorldNormal;
 	vec2 TexCoord;
 }vs_out;
 
 void main()
 {
-	vs_out.Normal = vNormal;
+	vs_out.WorldPos = vec3(uModel * vec4(vPos, 1.0));
+
+	vs_out.WorldNormal = transpose(inverse(mat3(uModel))) * vNormal;
 	vs_out.TexCoord = vTexCoord;
+
 	gl_Position = uViewProjection * uModel * vec4(vPos, 1.0);
 }

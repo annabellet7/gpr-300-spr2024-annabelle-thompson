@@ -14,6 +14,16 @@ uniform sampler2D uMainTex;
 uniform vec3 uEyePos;
 uniform vec3 uLightDir = vec3(0.0, -1.0, 0.0);
 uniform vec3 uLightColor = vec3(1.0);
+uniform vec3 uAmbientColor = vec3(0.3, 0.4, 0.46);
+
+struct Material
+{
+	float Ka; //ambient coefficient
+	float Kd; //diffuse coefficient
+	float Ks; //specular coefficient
+	float Shininess;
+};
+uniform Material uMaterial;
 
 void main()
 {
@@ -23,10 +33,11 @@ void main()
 
 	vec3 toEye = normalize(uEyePos - fs_in.WorldPos);
 	vec3 h = normalize(toLight + toEye);
-	float specularFactor = pow(max(dot(norm,h),0.0),128); 
+	float specularFactor = pow(max(dot(norm,h),0.0),uMaterial.Shininess); 
 
-	vec3 lightColor = uLightColor * (diffuseFactor + specularFactor);
+	vec3 lightColor = (diffuseFactor * uMaterial.Kd + specularFactor * uMaterial.Ks) * uLightColor;
+	lightColor += uAmbientColor * uMaterial.Ka;
 	vec3 objColor = texture(uMainTex, fs_in.TexCoord).rgb;
 
-	FragColor = vec4(lightColor * objColor, 1.0);
+	FragColor = vec4(objColor * lightColor, 1.0);
 }

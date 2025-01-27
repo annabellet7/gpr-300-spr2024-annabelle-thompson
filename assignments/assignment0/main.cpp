@@ -28,6 +28,13 @@ float deltaTime;
 ew::Camera camera;
 ew::CameraController cameraController;
 
+struct Material {
+	float Ka = 1.0;
+	float Kd = 0.5;
+	float Ks = 0.5;
+	float Shininess = 128;
+}material;
+
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
@@ -62,6 +69,10 @@ int main() {
 
 		glBindTextureUnit(0, brickTex);
 		shader.setVec3("uEyePos", camera.position);
+		shader.setFloat("uMaterial.Ka", material.Ka);
+		shader.setFloat("uMaterial.Kd", material.Kd);
+		shader.setFloat("uMaterial.Ks", material.Ks);
+		shader.setFloat("uMaterial.Shininess", material.Shininess);
 
 		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
 		shader.setMat4("uModel", monkeyTransform.modelMatrix());
@@ -84,6 +95,14 @@ void drawUI() {
 	ImGui::NewFrame();
 
 	ImGui::Begin("Settings");
+
+	if (ImGui::CollapsingHeader("Material")) {
+		ImGui::SliderFloat("AmbientK", &material.Ka, 0.0f, 1.0f);
+		ImGui::SliderFloat("DiffuseK", &material.Kd, 0.0f, 1.0f);
+		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
+		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
+	}
+
 	if (ImGui::Button("Reset Camera"))
 	{
 		resetCamera(&camera, &cameraController);

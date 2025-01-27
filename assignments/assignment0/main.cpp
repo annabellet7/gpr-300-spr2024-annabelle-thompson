@@ -61,6 +61,7 @@ int main() {
 		shader.use();
 
 		glBindTextureUnit(0, brickTex);
+		shader.setVec3("uEyePos", camera.position);
 
 		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
 		shader.setMat4("uModel", monkeyTransform.modelMatrix());

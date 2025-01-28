@@ -28,6 +28,13 @@ float deltaTime;
 ew::Camera camera;
 ew::CameraController cameraController;
 
+struct Lighting
+{
+	glm::vec3 lightDir = glm::vec3(0.0f, -1.0f, 0.0f);
+	glm::vec3 lightColor = glm::vec3(0.95f, 0.875f, 0.8f);
+}lighting; 
+
+
 struct Material {
 	float Ka = 1.0;
 	float Kd = 0.5;
@@ -44,10 +51,11 @@ int main() {
 	glEnable(GL_DEPTH_TEST);
 
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
-	ew::Model monkeyModel = ew::Model("assets/Suzanne.obj");
+	ew::Model monkeyModel = ew::Model("assets/Suzanne.fbx");
 	ew::Transform monkeyTransform;
 
-	GLuint brickTex = ew::loadTexture("assets/stone_color.jpg");
+	GLuint stoneTex = ew::loadTexture("assets/stone_color.jpg");
+	GLuint stoneNormals = ew::loadTexture("assets/stone_normals.jpg");
 
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	camera.target = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -62,17 +70,23 @@ int main() {
 		prevFrameTime = time;
 
 		//RENDER
-		glClearColor(0.6f,0.8f,0.92f,1.0f);
+		glClearColor(lighting.lightColor.r, lighting.lightColor.g, lighting.lightColor.b, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		shader.use();
+		glBindTextureUnit(0, stoneTex);
+		glBindTextureUnit(1, stoneNormals);
 
-		glBindTextureUnit(0, brickTex);
+		shader.use();
+		shader.setInt("uMainTex", 0);
+		shader.setInt("uMainNorms", 1);
+
 		shader.setVec3("uEyePos", camera.position);
 		shader.setFloat("uMaterial.Ka", material.Ka);
 		shader.setFloat("uMaterial.Kd", material.Kd);
 		shader.setFloat("uMaterial.Ks", material.Ks);
 		shader.setFloat("uMaterial.Shininess", material.Shininess);
+		shader.setVec3("uLightDir", lighting.lightDir);
+		shader.setVec3("uLightColor", lighting.lightColor);
 
 		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
 		shader.setMat4("uModel", monkeyTransform.modelMatrix());
@@ -95,6 +109,12 @@ void drawUI() {
 	ImGui::NewFrame();
 
 	ImGui::Begin("Settings");
+
+	if (ImGui::CollapsingHeader("Lighting")) {
+		ImGui::DragFloat3("Light Position", &lighting.lightDir.x, 0.1f);
+		ImGui::ColorEdit3("Light Color", &lighting.lightColor.r, 0.1f);
+	}
+	
 
 	if (ImGui::CollapsingHeader("Material")) {
 		ImGui::SliderFloat("AmbientK", &material.Ka, 0.0f, 1.0f);

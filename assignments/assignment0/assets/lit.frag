@@ -4,16 +4,16 @@ out vec4 FragColor;
 
 in Surface 
 {
-	vec3 WorldPos;
-	vec3 WorldNormal;
+	vec3 TangentFragPos;
 	vec2 TexCoord;
+	vec3 TangentEyePos;
+	vec3 TangnetLightDir;
 }fs_in;
 
 uniform sampler2D uMainTex;
+uniform sampler2D uMainNorms;
 
-uniform vec3 uEyePos;
-uniform vec3 uLightDir = vec3(0.0, -1.0, 0.0);
-uniform vec3 uLightColor = vec3(1.0);
+uniform vec3 uLightColor;
 uniform vec3 uAmbientColor = vec3(0.3, 0.4, 0.46);
 
 struct Material
@@ -26,14 +26,23 @@ struct Material
 uniform Material uMaterial;
 
 void main()
-{
-	vec3 norm = normalize(fs_in.WorldNormal);
-	vec3 toLight = -uLightDir;
-	float diffuseFactor = max(dot(norm, toLight), 0.0);
+{	
+	vec3 norm = normalize(fs_in.TangentFragPos);
+	vec3 normalMap = texture(uMainNorms, fs_in.TexCoord).rgb;
+	normalMap = normalize(normalMap * 2.0 - 1.0);
 
-	vec3 toEye = normalize(uEyePos - fs_in.WorldPos);
+//	mat3 basis = mat3
+//	(norm.z, norm.y, -norm.x,
+//	norm.x, norm.z, -norm.y,
+//	norm.x, norm.y, norm.z);
+//	norm = normalize(normalMap.x * basis[0] + normalMap.y * basis[1] + normalMap.z * basis[2]); //rotates grain over ripples
+
+	vec3 toLight = -fs_in.TangnetLightDir;
+	float diffuseFactor = max(dot(normalMap, toLight), 0.0);
+
+	vec3 toEye = normalize(fs_in.TangentEyePos - fs_in.TangentFragPos);
 	vec3 h = normalize(toLight + toEye);
-	float specularFactor = pow(max(dot(norm,h),0.0),uMaterial.Shininess); 
+	float specularFactor = pow(max(dot(normalMap,h),0.0),uMaterial.Shininess); 
 
 	vec3 lightColor = (diffuseFactor * uMaterial.Kd + specularFactor * uMaterial.Ks) * uLightColor;
 	lightColor += uAmbientColor * uMaterial.Ka;

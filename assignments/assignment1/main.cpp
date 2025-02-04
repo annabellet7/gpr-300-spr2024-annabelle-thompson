@@ -33,6 +33,8 @@ struct PostProcessing
 {
 	bool blurOn = false;
 	float blur = 300.0f;
+	bool edgeOn = false;
+	float edge = 300.0f;
 }postProcessing;
 
 struct Lighting
@@ -155,6 +157,8 @@ int main() {
 		buffer.use();
 		buffer.setFloat("uBlur", postProcessing.blur);
 		buffer.setInt("uBlurOn", postProcessing.blurOn);
+		buffer.setFloat("uEdge", postProcessing.edge);
+		buffer.setInt("uEdgeOn", postProcessing.edgeOn);
 
 		glBindVertexArray(dummyVAO);
 		glBindTexture(GL_TEXTURE_2D, textureColorbuffer);	
@@ -191,7 +195,9 @@ void drawUI() {
 	if (ImGui::CollapsingHeader("Post Processing"))
 	{
 		ImGui::Checkbox("Blur ON/OFF", &postProcessing.blurOn);
+		ImGui::Checkbox("Edge ON/OFF", &postProcessing.edgeOn);
 		ImGui::SliderFloat("Blur", &postProcessing.blur, 0.0f, 300.0f);
+		ImGui::SliderFloat("Edge", &postProcessing.edge, 0.0f, 300.0f);
 		
 	}
 	

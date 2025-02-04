@@ -35,6 +35,8 @@ struct PostProcessing
 	float blur = 300.0f;
 	bool edgeOn = false;
 	float edge = 300.0f;
+	bool gammaOn = false;
+	float gamma = 2.2f;
 }postProcessing;
 
 struct Lighting
@@ -72,7 +74,9 @@ int main() {
 	ew::Model monkeyModel = ew::Model("assets/Suzanne.fbx");
 	ew::Transform monkeyTransform;
 
-	GLuint stoneTex = ew::loadTexture("assets/stone_color.jpg");
+
+	GLuint stoneTexGamma = ew::loadTexture("assets/stone_color.jpg", GL_REPEAT, GL_LINEAR, GL_LINEAR, false, true);
+	GLuint stoneTex = ew::loadTexture("assets/stone_color.jpg", GL_REPEAT, GL_LINEAR, GL_LINEAR, false, false);
 	GLuint stoneNormals = ew::loadTexture("assets/stone_normals.jpg");
 
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
@@ -127,7 +131,10 @@ int main() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glEnable(GL_DEPTH_TEST);
 
-		glBindTextureUnit(0, stoneTex);
+		if (postProcessing.gammaOn)
+			glBindTextureUnit(0, stoneTexGamma);
+		else
+			glBindTextureUnit(0, stoneTex);
 		glBindTextureUnit(1, stoneNormals);
 
 		shader.use();
@@ -159,6 +166,8 @@ int main() {
 		buffer.setInt("uBlurOn", postProcessing.blurOn);
 		buffer.setFloat("uEdge", postProcessing.edge);
 		buffer.setInt("uEdgeOn", postProcessing.edgeOn);
+		buffer.setFloat("uGamma", postProcessing.gamma);
+		buffer.setInt("uGammaOn", postProcessing.gammaOn);
 
 		glBindVertexArray(dummyVAO);
 		glBindTexture(GL_TEXTURE_2D, textureColorbuffer);	
@@ -196,8 +205,10 @@ void drawUI() {
 	{
 		ImGui::Checkbox("Blur ON/OFF", &postProcessing.blurOn);
 		ImGui::Checkbox("Edge ON/OFF", &postProcessing.edgeOn);
+		ImGui::Checkbox("Gamma ON/OFF", &postProcessing.gammaOn);
 		ImGui::SliderFloat("Blur", &postProcessing.blur, 0.0f, 300.0f);
 		ImGui::SliderFloat("Edge", &postProcessing.edge, 0.0f, 300.0f);
+		ImGui::SliderFloat("Gamma", &postProcessing.gamma, 0.0f, 10.0f);
 		
 	}
 	

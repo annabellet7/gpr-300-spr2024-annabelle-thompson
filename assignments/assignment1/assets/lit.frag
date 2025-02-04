@@ -15,6 +15,7 @@ uniform sampler2D uMainNorms;
 
 uniform vec3 uLightColor;
 uniform vec3 uAmbientColor = vec3(0.3, 0.4, 0.46);
+uniform float uGamma;
 
 struct Material
 {

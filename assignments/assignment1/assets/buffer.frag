@@ -8,9 +8,11 @@ uniform sampler2D uScreenTexture;
 
 uniform float uBlur;
 uniform float uEdge;
+uniform float uGamma;
 
 uniform bool uBlurOn;
 uniform bool uEdgeOn;
+uniform bool uGammaOn;
 
 void main()
 {
@@ -90,6 +92,7 @@ void main()
 		}
 	}
 	
-
-	FragColor = vec4(col, 1.0);
+	if (uGammaOn)
+		col = pow(col, vec3(1.0/uGamma));
+    FragColor = vec4(col, 1.0);
 }

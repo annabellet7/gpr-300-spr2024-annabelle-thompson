@@ -21,9 +21,9 @@ static int getTextureFormat(int numComponents) {
 namespace ew {
 	unsigned int loadTexture(const char* filePath) {
 		stbi_set_flip_vertically_on_load(true);
-		return loadTexture(filePath, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, true);
+		return loadTexture(filePath, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, true, false);
 	}
-	unsigned int loadTexture(const char* filePath, int wrapMode, int magFilter, int minFilter, bool mipmap) {
+	unsigned int loadTexture(const char* filePath, int wrapMode, int magFilter, int minFilter, bool mipmap, bool gamma) {
 		int width, height, numComponents;
 		unsigned char* data = stbi_load(filePath, &width, &height, &numComponents, 0);
 		if (data == NULL) {
@@ -34,8 +34,28 @@ namespace ew {
 		unsigned int texture;
 		glGenTextures(1, &texture);
 		glBindTexture(GL_TEXTURE_2D, texture);
-		int format = getTextureFormat(numComponents);
-		glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+
+		int format = 0;
+		int dataFormat;
+
+		if (numComponents == 1)
+		{
+			format = GL_RED;
+			dataFormat = GL_RED;
+		}
+		else if (numComponents == 3)
+		{
+			format = gamma ? GL_SRGB : GL_RGB;
+			dataFormat = GL_RGB;
+
+		}
+		else if (numComponents == 4)
+		{
+			format = gamma ? GL_SRGB_ALPHA : GL_RGBA;
+			dataFormat = GL_RGBA;
+		}
+
+		glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, dataFormat, GL_UNSIGNED_BYTE, data);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapMode);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapMode);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);

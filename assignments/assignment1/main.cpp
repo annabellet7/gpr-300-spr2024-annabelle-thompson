@@ -29,6 +29,12 @@ float deltaTime;
 ew::Camera camera;
 ew::CameraController cameraController;
 
+struct PostProcessing
+{
+	bool blurOn = false;
+	float blur = 300.0f;
+}postProcessing;
+
 struct Lighting
 {
 	glm::vec3 lightDir = glm::vec3(0.0f, -1.0f, 0.0f);
@@ -147,6 +153,9 @@ int main() {
 		glDisable(GL_DEPTH_TEST);
 
 		buffer.use();
+		buffer.setFloat("uBlur", postProcessing.blur);
+		buffer.setInt("uBlurOn", postProcessing.blurOn);
+
 		glBindVertexArray(dummyVAO);
 		glBindTexture(GL_TEXTURE_2D, textureColorbuffer);	
 		glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -164,18 +173,28 @@ void drawUI() {
 
 	ImGui::Begin("Settings");
 
-	if (ImGui::CollapsingHeader("Lighting")) {
+	if (ImGui::CollapsingHeader("Lighting")) 
+	{
 		ImGui::DragFloat3("Light Position", &lighting.lightDir.x, 0.1f);
 		ImGui::ColorEdit3("Light Color", &lighting.lightColor.r, 0.1f);
 	}
 	
 
-	if (ImGui::CollapsingHeader("Material")) {
+	if (ImGui::CollapsingHeader("Material")) 
+	{
 		ImGui::SliderFloat("AmbientK", &material.Ka, 0.0f, 1.0f);
 		ImGui::SliderFloat("DiffuseK", &material.Kd, 0.0f, 1.0f);
 		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
 		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
 	}
+
+	if (ImGui::CollapsingHeader("Post Processing"))
+	{
+		ImGui::Checkbox("Blur ON/OFF", &postProcessing.blurOn);
+		ImGui::SliderFloat("Blur", &postProcessing.blur, 0.0f, 300.0f);
+		
+	}
+	
 
 	if (ImGui::Button("Reset Camera"))
 	{

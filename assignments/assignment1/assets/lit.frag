@@ -31,12 +31,6 @@ void main()
 	vec3 normalMap = texture(uMainNorms, fs_in.TexCoord).rgb;
 	normalMap = normalize(normalMap * 2.0 - 1.0);
 
-//	mat3 basis = mat3
-//	(norm.z, norm.y, -norm.x,
-//	norm.x, norm.z, -norm.y,
-//	norm.x, norm.y, norm.z);
-//	norm = normalize(normalMap.x * basis[0] + normalMap.y * basis[1] + normalMap.z * basis[2]); //rotates grain over ripples
-
 	vec3 toLight = -fs_in.TangnetLightDir;
 	float diffuseFactor = max(dot(normalMap, toLight), 0.0);
 

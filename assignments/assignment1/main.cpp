@@ -14,6 +14,7 @@
 #include <ew/transform.h>
 #include <ew/cameraController.h>
 #include <ew/texture.h>
+#include <ew/procGen.h>
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
@@ -24,6 +25,7 @@ void processInput(GLFWwindow* window);
 //Global state
 int screenWidth = 1080;
 int screenHeight = 720;
+const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
 float prevFrameTime;
 float deltaTime;
 ew::Camera camera;
@@ -74,6 +76,10 @@ int main() {
 	ew::Model monkeyModel = ew::Model("assets/Suzanne.fbx");
 	ew::Transform monkeyTransform;
 
+	ew::MeshData planeMeshData = ew::createPlane(10.0f, 10.0f, 1.0f);
+	ew::Mesh planeMesh = ew::Mesh(planeMeshData);
+	ew::Transform planeTransform;
+
 
 	GLuint stoneTexGamma = ew::loadTexture("assets/stone_color.jpg", GL_REPEAT, GL_LINEAR, GL_LINEAR, false, true);
 	GLuint stoneTex = ew::loadTexture("assets/stone_color.jpg", GL_REPEAT, GL_LINEAR, GL_LINEAR, false, false);
@@ -83,6 +89,8 @@ int main() {
 	camera.target = glm::vec3(0.0f, 0.0f, 0.0f);
 	camera.aspectRatio = (float)screenWidth / screenHeight;
 	camera.fov = 60.0f;
+
+	//----------Post Processing----------
 
 	unsigned int framebuffer;
 	unsigned int rbo;
@@ -113,7 +121,25 @@ int main() {
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	//----------Shadow Mapping----------
+
+	unsigned int depthMapFBO;
+	glGenFramebuffers(1, &depthMapFBO);
+
+	unsigned int depthMap;
+	glGenTextures(1, &depthMap);
+	glBindTexture(GL_TEXTURE_2D, depthMap);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+	glDrawBuffer(GL_NONE);
+	glReadBuffer(GL_NONE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
 	while (!glfwWindowShouldClose(window)) {
@@ -151,9 +177,15 @@ int main() {
 		shader.setMat4("uModel", monkeyTransform.modelMatrix());
 		shader.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
 
+		monkeyModel.draw();
+
+		planeTransform.position = glm::vec3(0.0f, -2.0f, 0.0f);
+		shader.setMat4("uModel", planeTransform.modelMatrix());
+		shader.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+
 		cameraController.move(window, &camera, deltaTime);
 
-		monkeyModel.draw();
+		planeMesh.draw();
 		glBindVertexArray(0);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);

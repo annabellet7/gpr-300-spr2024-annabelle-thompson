@@ -18,7 +18,7 @@
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
-void drawUI();
+void drawUI(int tex);
 void resetCamera(ew::Camera* camera, ew::CameraController* controller);
 void processInput(GLFWwindow* window);
 
@@ -26,10 +26,13 @@ void processInput(GLFWwindow* window);
 int screenWidth = 1080;
 int screenHeight = 720;
 const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+float nearPlane = 0.001f, farPlane = 50.0f;	
 float prevFrameTime;
 float deltaTime;
 ew::Camera camera;
 ew::CameraController cameraController;
+
+float texel = 1.0f;
 
 struct PostProcessing
 {
@@ -43,10 +46,9 @@ struct PostProcessing
 
 struct Lighting
 {
-	glm::vec3 lightDir = glm::vec3(0.0f, -1.0f, 0.0f);
+	glm::vec3 lightDir = glm::vec3(0.0f, 1.0f, 0.0f);
 	glm::vec3 lightColor = glm::vec3(0.95f, 0.875f, 0.8f);
-}lighting; 
-
+}lighting;
 
 struct Material {
 	float Ka = 1.0;
@@ -65,10 +67,13 @@ int main() {
 
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
 	ew::Shader buffer = ew::Shader("assets/buffer.vert", "assets/buffer.frag");
+	ew::Shader depth = ew::Shader("assets/depth.vert", "assets/depth.frag");
+	ew::Shader debug = ew::Shader("assets/debug.vert", "assets/debug.frag");
 
 	shader.use();
 	shader.setInt("uMainTex", 0);
 	shader.setInt("uMainNorms", 1);
+	shader.setInt("uShadowMap", 2);
 
 	buffer.use();
 	buffer.setInt("uScreenTexture", 0);
@@ -90,20 +95,20 @@ int main() {
 	camera.aspectRatio = (float)screenWidth / screenHeight;
 	camera.fov = 60.0f;
 
+	unsigned int dummyVAO;
+	glCreateVertexArrays(1, &dummyVAO);
+
 	//----------Post Processing----------
 
 	unsigned int framebuffer;
 	unsigned int rbo;
 	unsigned int textureColorbuffer;
-	unsigned int dummyVAO;
 
 	glGenFramebuffers(1, &framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
 	glGenRenderbuffers(1, &rbo);
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-
-	glCreateVertexArrays(1, &dummyVAO);
 	
 	glGenTextures(1, &textureColorbuffer);
 	glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
@@ -132,15 +137,16 @@ int main() {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
@@ -151,19 +157,51 @@ int main() {
 
 		processInput(window);
 
-		//RENDER
-		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 		glClearColor(lighting.lightColor.r, lighting.lightColor.g, lighting.lightColor.b, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glEnable(GL_DEPTH_TEST);
+
+		glm::mat4 lightProjection = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, nearPlane, farPlane);
+		glm::mat4 lightView = glm::lookAt(lighting.lightDir, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+		depth.use();
+		depth.setMat4("uLightSpaceMatrix", lightSpaceMatrix);
+
+		//Shadow Mapping
+		glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+			glClear(GL_DEPTH_BUFFER_BIT);
+			if (postProcessing.gammaOn)
+				glBindTextureUnit(0, stoneTexGamma);
+			else
+				glBindTextureUnit(0, stoneTex);
+			glBindTextureUnit(1, stoneNormals);
+		{
+			glCullFace(GL_FRONT);
+			monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
+			depth.setMat4("uModel", monkeyTransform.modelMatrix());
+			monkeyModel.draw();
+
+			planeTransform.position = glm::vec3(0.0f, -2.0f, 0.0f);
+			depth.setMat4("uModel", planeTransform.modelMatrix());
+			planeMesh.draw();
+		}
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		//reset viewport
+		glViewport(0, 0, screenWidth, screenHeight);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		//RENDER
+		//glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+		glCullFace(GL_BACK);
+		shader.use();
 
 		if (postProcessing.gammaOn)
 			glBindTextureUnit(0, stoneTexGamma);
 		else
 			glBindTextureUnit(0, stoneTex);
 		glBindTextureUnit(1, stoneNormals);
-
-		shader.use();
+		glBindTextureUnit(2, depthMap);
 
 		shader.setVec3("uEyePos", camera.position);
 		shader.setFloat("uMaterial.Ka", material.Ka);
@@ -172,6 +210,8 @@ int main() {
 		shader.setFloat("uMaterial.Shininess", material.Shininess);
 		shader.setVec3("uLightDir", lighting.lightDir);
 		shader.setVec3("uLightColor", lighting.lightColor);
+		shader.setMat4("uLightSpaceMatrix", lightSpaceMatrix);
+		shader.setFloat("uTexel", texel);
 
 		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
 		shader.setMat4("uModel", monkeyTransform.modelMatrix());
@@ -182,11 +222,11 @@ int main() {
 		planeTransform.position = glm::vec3(0.0f, -2.0f, 0.0f);
 		shader.setMat4("uModel", planeTransform.modelMatrix());
 		shader.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		planeMesh.draw();
 
 		cameraController.move(window, &camera, deltaTime);
 
-		planeMesh.draw();
-		glBindVertexArray(0);
+		/*glBindVertexArray(0);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -203,15 +243,16 @@ int main() {
 
 		glBindVertexArray(dummyVAO);
 		glBindTexture(GL_TEXTURE_2D, textureColorbuffer);	
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+		glDrawArrays(GL_TRIANGLES, 0, 3);*/
 
-		drawUI();
+		drawUI(depthMap);
+
 		glfwSwapBuffers(window);
 	}
 	printf("Shutting down...");
 }
 
-void drawUI() {
+void drawUI(int tex) {
 	ImGui_ImplGlfw_NewFrame();
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui::NewFrame();
@@ -241,14 +282,27 @@ void drawUI() {
 		ImGui::SliderFloat("Blur", &postProcessing.blur, 0.0f, 300.0f);
 		ImGui::SliderFloat("Edge", &postProcessing.edge, 0.0f, 300.0f);
 		ImGui::SliderFloat("Gamma", &postProcessing.gamma, 0.0f, 10.0f);
-		
+
 	}
-	
+
+	ImGui::SliderFloat("PCF Filtering", &texel, 0.0f, 10.0f);
 
 	if (ImGui::Button("Reset Camera"))
 	{
 		resetCamera(&camera, &cameraController);
 	}
+
+	ImGui::End();
+
+	ImGui::Begin("Shadow Map");
+	//Using a Child allow to fill all the space of the window.
+	ImGui::BeginChild("Shadow Map");
+	//Stretch image to be window size
+	ImVec2 windowSize = ImGui::GetWindowSize();
+	//Invert 0-1 V to flip vertically for ImGui display
+	//shadowMap is the texture2D handle
+	ImGui::Image((ImTextureID)tex, windowSize, ImVec2(0, 1), ImVec2(1, 0));
+	ImGui::EndChild();
 	ImGui::End();
 
 	ImGui::Render();

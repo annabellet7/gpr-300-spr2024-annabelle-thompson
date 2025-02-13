@@ -7,6 +7,7 @@ layout (location = 3) in vec2 vTexCoord;
 
 uniform mat4 uModel;
 uniform mat4 uViewProjection;
+uniform mat4 uLightSpaceMatrix;
 
 uniform vec3 uEyePos;
 uniform vec3 uLightDir;
@@ -17,6 +18,7 @@ out Surface
 	vec2 TexCoord;
 	vec3 TangentEyePos;
 	vec3 TangnetLightDir;
+	vec4 FragPosLightSpace;
 }vs_out;
 
 void main()
@@ -32,6 +34,7 @@ void main()
 	vs_out.TangentFragPos = TBN * vec3(uModel * vec4(vPos, 1.0));
 
 	vs_out.TexCoord = vTexCoord;
+	vs_out.FragPosLightSpace = uLightSpaceMatrix * vec4(vec3(uModel * vec4(vPos, 1.0)), 1.0);
 
 	gl_Position = uViewProjection * uModel * vec4(vPos, 1.0);
 }

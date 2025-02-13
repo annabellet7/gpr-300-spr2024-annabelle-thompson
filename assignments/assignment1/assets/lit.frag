@@ -20,6 +20,9 @@ uniform vec3 uAmbientColor = vec3(0.3, 0.4, 0.46);
 uniform float uGamma;
 uniform float uTexel;
 
+uniform float uMinBias;
+uniform float uMaxBias;
+
 struct Material
 {
 	float Ka; //ambient coefficient
@@ -45,7 +48,7 @@ float ShadowCalculation(vec4 fragPosLightSpace)
     vec3 normalMap = texture(uMainNorms, fs_in.TexCoord).rgb;
 	normalMap = normalize(normalMap * 2.0 - 1.0);
 
-    float bias = max(0.05 * (1.0 - dot(normalMap, fs_in.TangnetLightDir)), 0.005);
+    float bias = max(uMaxBias * (1.0 - dot(normalMap, fs_in.TangnetLightDir)), uMinBias);
     float shadow = 0.0;
     vec2 texelSize = uTexel / textureSize(uShadowMap, 0);
     for (int x = -1; x <= 1; ++x)
@@ -79,7 +82,7 @@ void main()
     vec3 specular = spec * uLightColor;    
     // calculate shadow
     float shadow = ShadowCalculation(fs_in.FragPosLightSpace);       
-    vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular)) * color;    
+    vec3 lighting = ((ambient * uMaterial.Ka) + (1.0 - shadow) * ((diffuse * uMaterial.Kd) + (specular * uMaterial.Ks))) * color;    
     
     FragColor = vec4(lighting, 1.0);
 }

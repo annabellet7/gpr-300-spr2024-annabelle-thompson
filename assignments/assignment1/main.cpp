@@ -32,7 +32,13 @@ float deltaTime;
 ew::Camera camera;
 ew::CameraController cameraController;
 
-float texel = 1.0f;
+struct Shadow
+{
+	float texel = 1.0f;
+	float minBias = 0.005;
+	float maxBias = 0.05;
+}shadow;
+
 
 struct PostProcessing
 {
@@ -46,7 +52,7 @@ struct PostProcessing
 
 struct Lighting
 {
-	glm::vec3 lightDir = glm::vec3(0.0f, 1.0f, 0.0f);
+	glm::vec3 lightDir = glm::vec3(0.5f, 1.0f, 0.0f);
 	glm::vec3 lightColor = glm::vec3(0.95f, 0.875f, 0.8f);
 }lighting;
 
@@ -211,7 +217,9 @@ int main() {
 		shader.setVec3("uLightDir", lighting.lightDir);
 		shader.setVec3("uLightColor", lighting.lightColor);
 		shader.setMat4("uLightSpaceMatrix", lightSpaceMatrix);
-		shader.setFloat("uTexel", texel);
+		shader.setFloat("uTexel", shadow.texel);
+		shader.setFloat("uMinBias", shadow.minBias);
+		shader.setFloat("uMaxBias", shadow.maxBias);
 
 		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
 		shader.setMat4("uModel", monkeyTransform.modelMatrix());
@@ -285,7 +293,12 @@ void drawUI(int tex) {
 
 	}
 
-	ImGui::SliderFloat("PCF Filtering", &texel, 0.0f, 10.0f);
+	if (ImGui::CollapsingHeader("Shadows"))
+	{
+		ImGui::SliderFloat("Min Bias", &shadow.minBias, 0.0f, 1.0f);
+		ImGui::SliderFloat("Max Bias", &shadow.maxBias, 0.0f, 1.0f);
+		ImGui::SliderFloat("PCF Filtering", &shadow.texel, 0.0f, 10.0f);
+	}
 
 	if (ImGui::Button("Reset Camera"))
 	{

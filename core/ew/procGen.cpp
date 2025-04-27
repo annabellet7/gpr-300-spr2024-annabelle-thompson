@@ -75,6 +75,7 @@ namespace ew {
 				v.pos.x = -width/2 + width * v.uv.x;
 				v.pos.y = 0;
 				v.pos.z = height/2 -height * v.uv.y;
+				v.tanget = vec3(1, 0, 0);
 				v.normal = vec3(0, 1, 0);
 				mesh.vertices.push_back(v);
 			}

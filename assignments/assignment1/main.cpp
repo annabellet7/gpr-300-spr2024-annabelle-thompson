@@ -16,6 +16,9 @@
 #include <ew/texture.h>
 #include <ew/procGen.h>
 
+#include <rainLib/Animator.h>
+#include <rainLib/Rig.h>
+
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
 void drawUI(int tex);
@@ -26,11 +29,39 @@ void processInput(GLFWwindow* window);
 int screenWidth = 1080;
 int screenHeight = 720;
 const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
-float nearPlane = 0.001f, farPlane = 50.0f;	
+float nearPlane = 0.001f, farPlane = 50.0f;
 float prevFrameTime;
 float deltaTime;
 ew::Camera camera;
 ew::CameraController cameraController;
+Rig skeleton;
+int bone = 0;
+
+enum boneNames 
+{
+	TORSO,
+	HEAD,
+	R_SHOLDER,
+	R_ELBOW,
+	R_WRIST,
+	L_SHOLDER,
+	L_ELBOW,
+	L_WRIST
+};
+
+struct LocalPose
+{
+	glm::vec3 pos;
+	glm::vec3 rot;
+	float scale;
+}localPose;
+
+struct Animation
+{
+	Animator* anim = new Animator();
+	float duration;
+	glm::vec3 value;
+}animation;
 
 struct Shadow
 {
@@ -38,7 +69,6 @@ struct Shadow
 	float minBias = 0.005;
 	float maxBias = 0.05;
 }shadow;
-
 
 struct PostProcessing
 {
@@ -84,6 +114,7 @@ int main() {
 	buffer.use();
 	buffer.setInt("uScreenTexture", 0);
 
+	
 	ew::Model monkeyModel = ew::Model("assets/Suzanne.fbx");
 	ew::Transform monkeyTransform;
 
@@ -115,17 +146,17 @@ int main() {
 
 	glGenRenderbuffers(1, &rbo);
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-	
+
 	glGenTextures(1, &textureColorbuffer);
 	glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorbuffer, 0);
-	
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, screenWidth, screenHeight); 
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo); 
-	
+
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, screenWidth, screenHeight);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 	{
 		printf("ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
@@ -166,33 +197,6 @@ int main() {
 		glClearColor(lighting.lightColor.r, lighting.lightColor.g, lighting.lightColor.b, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		glm::mat4 lightProjection = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, nearPlane, farPlane);
-		glm::mat4 lightView = glm::lookAt(lighting.lightDir, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		glm::mat4 lightSpaceMatrix = lightProjection * lightView;
-		depth.use();
-		depth.setMat4("uLightSpaceMatrix", lightSpaceMatrix);
-
-		//Shadow Mapping
-		glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-			glClear(GL_DEPTH_BUFFER_BIT);
-			if (postProcessing.gammaOn)
-				glBindTextureUnit(0, stoneTexGamma);
-			else
-				glBindTextureUnit(0, stoneTex);
-			glBindTextureUnit(1, stoneNormals);
-		{
-			glCullFace(GL_FRONT);
-			monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
-			depth.setMat4("uModel", monkeyTransform.modelMatrix());
-			monkeyModel.draw();
-
-			planeTransform.position = glm::vec3(0.0f, -2.0f, 0.0f);
-			depth.setMat4("uModel", planeTransform.modelMatrix());
-			planeMesh.draw();
-		}
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 		//reset viewport
 		glViewport(0, 0, screenWidth, screenHeight);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -216,16 +220,23 @@ int main() {
 		shader.setFloat("uMaterial.Shininess", material.Shininess);
 		shader.setVec3("uLightDir", lighting.lightDir);
 		shader.setVec3("uLightColor", lighting.lightColor);
-		shader.setMat4("uLightSpaceMatrix", lightSpaceMatrix);
 		shader.setFloat("uTexel", shadow.texel);
 		shader.setFloat("uMinBias", shadow.minBias);
 		shader.setFloat("uMaxBias", shadow.maxBias);
 
-		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
-		shader.setMat4("uModel", monkeyTransform.modelMatrix());
-		shader.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		skeleton.SolveFK();
+		for (int i = 0; i < skeleton.mNumJoints; i++)
+		{
+			monkeyTransform.scale = glm::vec3(skeleton.mJoints[i].mGlobalPose.mScale, 
+									skeleton.mJoints[i].mGlobalPose.mScale, 
+									skeleton.mJoints[i].mGlobalPose.mScale);
+			monkeyTransform.rotation = glm::radians(skeleton.mJoints[i].mGlobalPose.mRotation);
+			monkeyTransform.position = skeleton.mJoints[i].mGlobalPose.mPosition;
+			shader.setMat4("uModel", monkeyTransform.modelMatrix());
+			shader.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
 
-		monkeyModel.draw();
+			monkeyModel.draw();
+		}
 
 		planeTransform.position = glm::vec3(0.0f, -2.0f, 0.0f);
 		shader.setMat4("uModel", planeTransform.modelMatrix());
@@ -234,29 +245,11 @@ int main() {
 
 		cameraController.move(window, &camera, deltaTime);
 
-		/*glBindVertexArray(0);
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glDisable(GL_DEPTH_TEST);
-
-		buffer.use();
-		buffer.setFloat("uBlur", postProcessing.blur);
-		buffer.setInt("uBlurOn", postProcessing.blurOn);
-		buffer.setFloat("uEdge", postProcessing.edge);
-		buffer.setInt("uEdgeOn", postProcessing.edgeOn);
-		buffer.setFloat("uGamma", postProcessing.gamma);
-		buffer.setInt("uGammaOn", postProcessing.gammaOn);
-
-		glBindVertexArray(dummyVAO);
-		glBindTexture(GL_TEXTURE_2D, textureColorbuffer);	
-		glDrawArrays(GL_TRIANGLES, 0, 3);*/
-
 		drawUI(depthMap);
 
 		glfwSwapBuffers(window);
 	}
+	delete animation.anim;
 	printf("Shutting down...");
 }
 
@@ -267,14 +260,14 @@ void drawUI(int tex) {
 
 	ImGui::Begin("Settings");
 
-	if (ImGui::CollapsingHeader("Lighting")) 
+	if (ImGui::CollapsingHeader("Lighting"))
 	{
 		ImGui::DragFloat3("Light Position", &lighting.lightDir.x, 0.1f);
 		ImGui::ColorEdit3("Light Color", &lighting.lightColor.r, 0.1f);
 	}
-	
 
-	if (ImGui::CollapsingHeader("Material")) 
+
+	if (ImGui::CollapsingHeader("Material"))
 	{
 		ImGui::SliderFloat("AmbientK", &material.Ka, 0.0f, 1.0f);
 		ImGui::SliderFloat("DiffuseK", &material.Kd, 0.0f, 1.0f);
@@ -307,16 +300,66 @@ void drawUI(int tex) {
 
 	ImGui::End();
 
-	ImGui::Begin("Shadow Map");
-	//Using a Child allow to fill all the space of the window.
-	ImGui::BeginChild("Shadow Map");
-	//Stretch image to be window size
-	ImVec2 windowSize = ImGui::GetWindowSize();
-	//Invert 0-1 V to flip vertically for ImGui display
-	//shadowMap is the texture2D handle
-	ImGui::Image((ImTextureID)tex, windowSize, ImVec2(0, 1), ImVec2(1, 0));
-	ImGui::EndChild();
+	ImGui::Begin("Hierarchy");
+
+	if (ImGui::CollapsingHeader("Torso"))
+	{
+		ImGui::DragFloat3("Torso Position", &skeleton.mJoints[TORSO].mLocalPose.mPosition.x, 0.1f);
+		ImGui::DragFloat3("Torso Rotation", &skeleton.mJoints[TORSO].mLocalPose.mRotation.x, 0.1f);
+		ImGui::DragFloat("Torso Scale", &skeleton.mJoints[TORSO].mLocalPose.mScale, 0.1f);
+
+		if (ImGui::CollapsingHeader("Head"))
+		{
+			ImGui::DragFloat3("Head Position", &skeleton.mJoints[HEAD].mLocalPose.mPosition.x, 0.1f);
+			ImGui::DragFloat3("Head Rotation", &skeleton.mJoints[HEAD].mLocalPose.mRotation.x, 0.1f);
+			ImGui::DragFloat("Head Scale", &skeleton.mJoints[HEAD].mLocalPose.mScale, 0.1);
+		}
+
+		if (ImGui::CollapsingHeader("R_Sholder"))
+		{
+			ImGui::DragFloat3("R_Sholder Position", &skeleton.mJoints[R_SHOLDER].mLocalPose.mPosition.x, 0.1f);
+			ImGui::DragFloat3("R_Sholder Rotation", &skeleton.mJoints[R_SHOLDER].mLocalPose.mRotation.x, 0.1f);
+			ImGui::DragFloat("R_Sholder Scale", &skeleton.mJoints[R_SHOLDER].mLocalPose.mScale, 0.1f);
+
+			if (ImGui::CollapsingHeader("R_Elbow"))
+			{
+				ImGui::DragFloat3("R_Elbow Position", &skeleton.mJoints[R_ELBOW].mLocalPose.mPosition.x, 0.1f);
+				ImGui::DragFloat3("R_Elbow Rotation", &skeleton.mJoints[R_ELBOW].mLocalPose.mRotation.x, 0.1f);
+				ImGui::DragFloat("R_Elbow Scale", &skeleton.mJoints[R_ELBOW].mLocalPose.mScale, 0.1f);
+
+				if (ImGui::CollapsingHeader("R_Wrist"))
+				{
+					ImGui::DragFloat3("R_Wrist Position", &skeleton.mJoints[R_WRIST].mLocalPose.mPosition.x, 0.1f);
+					ImGui::DragFloat3("R_Wrist Rotation", &skeleton.mJoints[R_WRIST].mLocalPose.mRotation.x, 0.1f);
+					ImGui::DragFloat("R_Wrist Scale", &skeleton.mJoints[R_WRIST].mLocalPose.mScale, 0.1f);
+				}
+			}
+		}
+
+		if (ImGui::CollapsingHeader("L_Sholder"))
+		{
+			ImGui::DragFloat3("L_Sholder Position", &skeleton.mJoints[L_SHOLDER].mLocalPose.mPosition.x, 0.1f);
+			ImGui::DragFloat3("L_Sholder Rotation", &skeleton.mJoints[L_SHOLDER].mLocalPose.mRotation.x, 0.1f);
+			ImGui::DragFloat("L_Sholder Scale", &skeleton.mJoints[L_SHOLDER].mLocalPose.mScale, 0.1f);
+
+			if (ImGui::CollapsingHeader("L_Elbow"))
+			{
+				ImGui::DragFloat3("L_Elbow Position", &skeleton.mJoints[L_ELBOW].mLocalPose.mPosition.x, 0.1f);
+				ImGui::DragFloat3("L_Elbow Rotation", &skeleton.mJoints[L_ELBOW].mLocalPose.mRotation.x, 0.1f);
+				ImGui::DragFloat("L_Elbow Scale", &skeleton.mJoints[L_ELBOW].mLocalPose.mScale, 0.1f);
+
+				if (ImGui::CollapsingHeader("L_Wrist"))
+				{
+					ImGui::DragFloat3("L_Wrist Position", &skeleton.mJoints[L_WRIST].mLocalPose.mPosition.x, 0.1f);
+					ImGui::DragFloat3("L_Wrist Rotation", &skeleton.mJoints[L_WRIST].mLocalPose.mRotation.x, 0.1f);
+					ImGui::DragFloat("L_Wrist Scale", &skeleton.mJoints[L_WRIST].mLocalPose.mScale, 0.1f);
+				}
+			}
+		}
+	}
+
 	ImGui::End();
+
 
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

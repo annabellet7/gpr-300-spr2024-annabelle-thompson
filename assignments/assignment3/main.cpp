@@ -202,6 +202,17 @@ int main() {
 		fruitModel.draw();
 		stemModel.draw();
 
+		monkeyTransform.position = glm::vec3(3.0, 0.0, 0.0);
+		hull.setMat4("uModel", monkeyTransform.modelMatrix());
+		hull.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		monkeyModel.draw();
+
+		planeTransform.position = glm::vec3(-3.0, 0.0, 0.0);
+		planeTransform.rotation = glm::vec3(glm::radians(90.0), 0.0f, 0.0f);
+		hull.setMat4("uModel", planeTransform.modelMatrix());
+		hull.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		planeMesh.draw();
+
 		//-----------------------------------------------------------------------------------
 
 		fruit.use();
@@ -217,6 +228,8 @@ int main() {
 		fruit.setMat4("uModel", fruitTransform.modelMatrix());
 		fruit.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
 		fruitModel.draw();
+
+
 
 		//-----------------------------------------------------------------------------------
 

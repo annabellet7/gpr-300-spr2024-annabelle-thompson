@@ -10,7 +10,8 @@ public:
 	Framebuffer();
 
 	void init(int width, int height);
-	void checkStatus();
+	void deleteBuffer();
+	bool checkStatus();
 	
 	unsigned int getFbo();
 	unsigned int getColorTexturebuffer();

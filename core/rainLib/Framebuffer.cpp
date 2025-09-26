@@ -29,12 +29,19 @@ void Framebuffer::init(int width, int height)
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
 }
 
-void Framebuffer::checkStatus()
+void Framebuffer::deleteBuffer()
+{
+	glDeleteFramebuffers(1, &fbo);
+}
+
+bool Framebuffer::checkStatus()
 {
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 	{
 		printf("ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+		return false;
 	}
+	return true;
 }
 
 unsigned int Framebuffer::getFbo()

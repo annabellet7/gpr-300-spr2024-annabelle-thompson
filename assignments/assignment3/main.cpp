@@ -68,6 +68,8 @@ struct Material {
 int main() {
 	GLFWwindow* window = initWindow("Assignment 1", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+	int oldWidth = screenWidth;
+	int oldHeight = screenHeight;
 
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
@@ -167,8 +169,32 @@ int main() {
 		float time = (float)glfwGetTime();
 		deltaTime = time - prevFrameTime;
 		prevFrameTime = time;
-
 		processInput(window);
+
+		//int width, height;
+		//glfwGetWindowSize(window, &width, &height);
+		if (screenWidth != oldWidth || screenHeight != oldHeight)
+		{
+			oldWidth = screenWidth;
+			oldHeight = screenHeight;
+
+			gammaBuffer.deleteBuffer();
+			outlineBuffer.deleteBuffer();
+			gKuwaharaBuffer.deleteBuffer();
+			aKuwaharaBuffer.deleteBuffer();
+			overlayBuffer.deleteBuffer();
+
+			gammaBuffer.init(screenWidth, screenHeight);
+			gammaBuffer.checkStatus();
+			outlineBuffer.init(screenWidth, screenHeight);
+			outlineBuffer.checkStatus();
+			gKuwaharaBuffer.init(screenWidth, screenHeight);
+			gKuwaharaBuffer.checkStatus();
+			aKuwaharaBuffer.init(screenWidth, screenHeight);
+			aKuwaharaBuffer.checkStatus();
+			overlayBuffer.init(screenWidth, screenHeight);
+			overlayBuffer.checkStatus();
+		}
 
 		//RENDER
 		glBindFramebuffer(GL_FRAMEBUFFER, gammaBuffer.getFbo());

@@ -22,6 +22,7 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
 void drawUI();
 void resetCamera(ew::Camera* camera, ew::CameraController* controller);
+void setCamera(ew::Camera* camera, ew::CameraController* controller);
 void processInput(GLFWwindow* window);
 
 //Global state
@@ -36,6 +37,7 @@ float hullThickness = 0.01;
 
 struct PostProcessing
 {
+	bool post = true;
 	bool bKuwaharaOn = true;
 	bool aKuwaharaOn = true;
 	int bRadius = 6;
@@ -44,6 +46,7 @@ struct PostProcessing
 	float edge = 800.0f;
 	bool gammaOn = true;
 	float gamma = 2.2f;
+	bool paperOverlay = true;
 	float threshold = 0.3f;
 	const int SECTORS = 8;
 	float sharpeness = 0.5f;
@@ -65,6 +68,15 @@ struct Material {
 	float Shininess = 128;
 }material;
 
+enum Scene {
+	DEFAULT,
+	GHOST,
+	REDDEAD,
+	FORZA
+};
+
+int scene = Scene::DEFAULT;
+
 int main() {
 	GLFWwindow* window = initWindow("Assignment 1", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
@@ -84,6 +96,7 @@ int main() {
 	ew::Shader sobel = ew::Shader("assets/VertexShaders/postprocessing.vert", "assets/FragmentShaders/sobel.frag");
 	ew::Shader overlay = ew::Shader("assets/VertexShaders/postprocessing.vert", "assets/FragmentShaders/overlay.frag");
 	ew::Shader kuwahara = ew::Shader("assets/VertexShaders/postprocessing.vert", "assets/FragmentShaders/kuwahara.frag");
+	ew::Shader screenshot = ew::Shader("assets/VertexShaders/tangents.vert", "assets/FragmentShaders/ss.frag");
 
 	fruit.use();
 	fruit.setInt("uMainTex", 0);
@@ -112,6 +125,9 @@ int main() {
 	kuwahara.setInt("uScreenTexture", 0);
 	overlay.setInt("uPaper", 2);
 
+	screenshot.use();
+	screenshot.setInt("uMainTex", 7);
+
 	ew::Model fruitModel = ew::Model("assets/Models/Fruit.obj");
 	ew::Transform fruitTransform;
 	ew::Model stemModel = ew::Model("assets/Models/Stem.obj");
@@ -122,6 +138,10 @@ int main() {
 	ew::MeshData planeMeshData = ew::createPlane(2.0f, 2.0f, 1.0f);
 	ew::Mesh planeMesh = ew::Mesh(planeMeshData);
 	ew::Transform planeTransform;
+
+	ew::MeshData ssPlaneMeshData = ew::createPlane(16.0f, 9.0f, 1.0f);
+	ew::Mesh ssPlaneMesh = ew::Mesh(ssPlaneMeshData);
+	ew::Transform ssPlaneTransform;
 
 	GLuint fruitTexGamma = ew::loadTexture("assets/TextureColors/fruit_color.png", GL_REPEAT, GL_LINEAR, GL_LINEAR, false, true);
 	GLuint fruitTex = ew::loadTexture("assets/TextureColors/fruit_color.png", GL_REPEAT, GL_LINEAR, GL_LINEAR, false, false);
@@ -134,6 +154,12 @@ int main() {
 	GLuint leafTex = ew::loadTexture("assets/TextureColors/leaf_color.png", GL_REPEAT, GL_LINEAR, GL_LINEAR, false, false); //ambient cg
 	GLuint leafNormals = ew::loadTexture("assets/TextureNormals/leaf_normals.png", GL_REPEAT, GL_LINEAR, GL_LINEAR, false, false); //ambient cg
 	GLuint paperTex = ew::loadTexture("assets/TextureColors/paper_color.jpg", GL_REPEAT, GL_LINEAR, GL_LINEAR, false, true); //texture labs
+	GLuint ghostTexGamma = ew::loadTexture("assets/TextureColors/ghost.jpg", GL_CLAMP_TO_BORDER, GL_LINEAR, GL_LINEAR, false, true); //steam
+	GLuint ghostTex = ew::loadTexture("assets/TextureColors/ghost.jpg", GL_CLAMP_TO_BORDER, GL_LINEAR, GL_LINEAR, false, false); //steam
+	GLuint redDeadTexGamma = ew::loadTexture("assets/TextureColors/reddead.jpg", GL_CLAMP_TO_BORDER, GL_LINEAR, GL_LINEAR, false, true); //steam
+	GLuint redDeadTex = ew::loadTexture("assets/TextureColors/reddead.jpg", GL_CLAMP_TO_BORDER, GL_LINEAR, GL_LINEAR, false, false); //steam
+	GLuint forzaTexGamma = ew::loadTexture("assets/TextureColors/forza.jpg", GL_CLAMP_TO_BORDER, GL_LINEAR, GL_LINEAR, false, true); //steam
+	GLuint forzaTex = ew::loadTexture("assets/TextureColors/forza.jpg", GL_CLAMP_TO_BORDER, GL_LINEAR, GL_LINEAR, false, false); //steam
 
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	camera.target = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -197,18 +223,21 @@ int main() {
 		}
 
 		//RENDER
-		glBindFramebuffer(GL_FRAMEBUFFER, gammaBuffer.getFbo());
+		if (postProcessing.post)
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, gammaBuffer.getFbo());
+		}
 		glClearColor(lighting.lightColor.r, lighting.lightColor.g, lighting.lightColor.b, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glEnable(GL_DEPTH_TEST);
 
-		if (postProcessing.gammaOn)
+		if (postProcessing.gammaOn && postProcessing.post)
 		{
 			glBindTextureUnit(0, fruitTexGamma);
 			glBindTextureUnit(1, stemTexGamma);
 			glBindTextureUnit(3, stoneTexGamma);
 			glBindTextureUnit(5, leafTexGamma);
-		}	
+		}
 		else
 		{
 			glBindTextureUnit(0, fruitTex);
@@ -220,101 +249,191 @@ int main() {
 		glBindTextureUnit(4, stoneNormals);
 		glBindTextureUnit(6, leafNormals);
 
-		hull.use();
-		glCullFace(GL_FRONT);
-		hull.setFloat("uOutlineWidth", hullThickness);
-		hull.setMat4("uModel", fruitTransform.modelMatrix()); 
-		hull.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
-		fruitModel.draw();
-		stemModel.draw();
+		switch (scene)
+		{
+		case Scene::DEFAULT:
+			hull.use();
+			glCullFace(GL_FRONT);
+			hull.setFloat("uOutlineWidth", hullThickness);
+			hull.setMat4("uModel", fruitTransform.modelMatrix());
+			hull.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			fruitModel.draw();
+			stemModel.draw();
 
-		monkeyTransform.position = glm::vec3(3.0, 0.0, 0.0);
-		hull.setMat4("uModel", monkeyTransform.modelMatrix());
-		hull.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
-		monkeyModel.draw();
+			monkeyTransform.position = glm::vec3(3.0, 0.0, 0.0);
+			hull.setMat4("uModel", monkeyTransform.modelMatrix());
+			hull.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			monkeyModel.draw();
 
-		planeTransform.position = glm::vec3(-3.0, 0.0, 0.0);
-		planeTransform.rotation = glm::vec3(glm::radians(90.0), 0.0f, 0.0f);
-		hull.setMat4("uModel", planeTransform.modelMatrix());
-		hull.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
-		planeMesh.draw();
+			planeTransform.position = glm::vec3(-3.0, 0.0, 0.0);
+			planeTransform.rotation = glm::vec3(glm::radians(90.0), 0.0f, 0.0f);
+			hull.setMat4("uModel", planeTransform.modelMatrix());
+			hull.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			planeMesh.draw();
+
+			//-----------------------------------------------------------------------------------
+
+			fruit.use();
+			glCullFace(GL_BACK);
+			fruit.setVec3("uEyePos", camera.position);
+			fruit.setFloat("uMaterial.Ka", material.Ka);
+			fruit.setFloat("uMaterial.Kd", material.Kd);
+			fruit.setFloat("uMaterial.Ks", material.Ks);
+			fruit.setFloat("uMaterial.Shininess", material.Shininess);
+			fruit.setVec3("uLightDir", lighting.lightDir);
+			fruit.setVec3("uLightColor", lighting.lightColor);
+
+			fruit.setMat4("uModel", fruitTransform.modelMatrix());
+			fruit.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			fruitModel.draw();
+
+
+
+			//-----------------------------------------------------------------------------------
+
+			stem.use();
+
+			stem.setVec3("uEyePos", camera.position);
+			stem.setFloat("uMaterial.Ka", material.Ka);
+			stem.setFloat("uMaterial.Kd", material.Kd);
+			stem.setFloat("uMaterial.Ks", material.Ks);
+			stem.setFloat("uMaterial.Shininess", material.Shininess);
+			stem.setVec3("uLightDir", lighting.lightDir);
+			stem.setVec3("uLightColor", lighting.lightColor);
+
+			stem.setMat4("uModel", stemTransform.modelMatrix());
+			stem.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			stemModel.draw();
+
+			//-----------------------------------------------------------------------------------
+
+			monkey.use();
+
+			monkey.setVec3("uEyePos", camera.position);
+			monkey.setFloat("uMaterial.Ka", material.Ka);
+			monkey.setFloat("uMaterial.Kd", material.Kd);
+			monkey.setFloat("uMaterial.Ks", material.Ks);
+			monkey.setFloat("uMaterial.Shininess", material.Shininess);
+			monkey.setVec3("uLightDir", lighting.lightDir);
+			monkey.setVec3("uLightColor", lighting.lightColor);
+
+			monkeyTransform.position = glm::vec3(3.0, 0.0, 0.0);
+			monkey.setMat4("uModel", monkeyTransform.modelMatrix());
+			monkey.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			monkeyModel.draw();
+
+			//-----------------------------------------------------------------------------------
+
+			leaves.use();
+
+			leaves.setVec3("uEyePos", camera.position);
+			leaves.setFloat("uMaterial.Ka", material.Ka);
+			leaves.setFloat("uMaterial.Kd", material.Kd);
+			leaves.setFloat("uMaterial.Ks", material.Ks);
+			leaves.setFloat("uMaterial.Shininess", material.Shininess);
+			leaves.setVec3("uLightDir", lighting.lightDir);
+			leaves.setVec3("uLightColor", lighting.lightColor);
+
+			planeTransform.position = glm::vec3(-3.0, 0.0, 0.0);
+			planeTransform.rotation = glm::vec3(glm::radians(90.0), 0.0f, 0.0f);
+			leaves.setMat4("uModel", planeTransform.modelMatrix());
+			leaves.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			planeMesh.draw();
+
+
+			cameraController.move(window, &camera, deltaTime);
+			glBindVertexArray(0);
+			break;
+		case Scene::GHOST:
+
+			if (postProcessing.gammaOn && postProcessing.post)
+			{
+				glBindTextureUnit(7, ghostTexGamma);
+			}
+			else
+			{
+				glBindTextureUnit(7, ghostTex);
+			}
+
+			screenshot.use();
+
+			screenshot.setVec3("uEyePos", camera.position);
+			screenshot.setFloat("uMaterial.Ka", material.Ka);
+			screenshot.setFloat("uMaterial.Kd", material.Kd);
+			screenshot.setFloat("uMaterial.Ks", material.Ks);
+			screenshot.setFloat("uMaterial.Shininess", material.Shininess);
+			screenshot.setVec3("uLightDir", lighting.lightDir);
+			screenshot.setVec3("uLightColor", lighting.lightColor);
+
+			ssPlaneTransform.position = glm::vec3(0.0, 0.0, 0.0);
+			ssPlaneTransform.rotation = glm::vec3(glm::radians(90.0), 0.0f, glm::radians(180.0));
+			screenshot.setMat4("uModel", ssPlaneTransform.modelMatrix());
+			screenshot.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			ssPlaneMesh.draw();
+			setCamera(&camera, &cameraController);
+			break;
+		case Scene::REDDEAD:
+			if (postProcessing.gammaOn && postProcessing.post)
+			{
+				glBindTextureUnit(7, redDeadTexGamma);
+			}
+			else
+			{
+				glBindTextureUnit(7, redDeadTex);
+			}
+
+			screenshot.use();
+
+			screenshot.setVec3("uEyePos", camera.position);
+			screenshot.setFloat("uMaterial.Ka", material.Ka);
+			screenshot.setFloat("uMaterial.Kd", material.Kd);
+			screenshot.setFloat("uMaterial.Ks", material.Ks);
+			screenshot.setFloat("uMaterial.Shininess", material.Shininess);
+			screenshot.setVec3("uLightDir", lighting.lightDir);
+			screenshot.setVec3("uLightColor", lighting.lightColor);
+
+			ssPlaneTransform.position = glm::vec3(0.0, 0.0, 0.0);
+			ssPlaneTransform.rotation = glm::vec3(glm::radians(90.0), 0.0f, glm::radians(180.0));
+			screenshot.setMat4("uModel", ssPlaneTransform.modelMatrix());
+			screenshot.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			ssPlaneMesh.draw();
+			setCamera(&camera, &cameraController);
+			break;
+		case Scene::FORZA:
+			if (postProcessing.gammaOn && postProcessing.post)
+			{
+				glBindTextureUnit(7, forzaTexGamma);
+			}
+			else
+			{
+				glBindTextureUnit(7, forzaTex);
+			}
+
+			screenshot.use();
+
+			screenshot.setVec3("uEyePos", camera.position);
+			screenshot.setFloat("uMaterial.Ka", material.Ka);
+			screenshot.setFloat("uMaterial.Kd", material.Kd);
+			screenshot.setFloat("uMaterial.Ks", material.Ks);
+			screenshot.setFloat("uMaterial.Shininess", material.Shininess);
+			screenshot.setVec3("uLightDir", lighting.lightDir);
+			screenshot.setVec3("uLightColor", lighting.lightColor);
+
+			ssPlaneTransform.position = glm::vec3(0.0, 0.0, 0.0);
+			ssPlaneTransform.rotation = glm::vec3(glm::radians(90.0), 0.0f, glm::radians(180.0));
+			screenshot.setMat4("uModel", ssPlaneTransform.modelMatrix());
+			screenshot.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			ssPlaneMesh.draw();
+			setCamera(&camera, &cameraController);
+			break;
+		}
 
 		//-----------------------------------------------------------------------------------
-
-		fruit.use();
-		glCullFace(GL_BACK);
-		fruit.setVec3("uEyePos", camera.position);
-		fruit.setFloat("uMaterial.Ka", material.Ka);
-		fruit.setFloat("uMaterial.Kd", material.Kd);
-		fruit.setFloat("uMaterial.Ks", material.Ks);
-		fruit.setFloat("uMaterial.Shininess", material.Shininess);
-		fruit.setVec3("uLightDir", lighting.lightDir);
-		fruit.setVec3("uLightColor", lighting.lightColor);
-
-		fruit.setMat4("uModel", fruitTransform.modelMatrix());
-		fruit.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
-		fruitModel.draw();
-
-
-
-		//-----------------------------------------------------------------------------------
-
-		stem.use();
-
-		stem.setVec3("uEyePos", camera.position);
-		stem.setFloat("uMaterial.Ka", material.Ka);
-		stem.setFloat("uMaterial.Kd", material.Kd);
-		stem.setFloat("uMaterial.Ks", material.Ks);
-		stem.setFloat("uMaterial.Shininess", material.Shininess);
-		stem.setVec3("uLightDir", lighting.lightDir);
-		stem.setVec3("uLightColor", lighting.lightColor);
-
-		stem.setMat4("uModel", stemTransform.modelMatrix());
-		stem.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
-		stemModel.draw();
 		
-		//-----------------------------------------------------------------------------------
-		
-		monkey.use();
-
-		monkey.setVec3("uEyePos", camera.position);
-		monkey.setFloat("uMaterial.Ka", material.Ka);
-		monkey.setFloat("uMaterial.Kd", material.Kd);
-		monkey.setFloat("uMaterial.Ks", material.Ks);
-		monkey.setFloat("uMaterial.Shininess", material.Shininess);
-		monkey.setVec3("uLightDir", lighting.lightDir);
-		monkey.setVec3("uLightColor", lighting.lightColor);
-
-		monkeyTransform.position = glm::vec3(3.0, 0.0, 0.0);
-		monkey.setMat4("uModel", monkeyTransform.modelMatrix());
-		monkey.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
-		monkeyModel.draw();
-
-		//-----------------------------------------------------------------------------------
-
-		leaves .use();
-
-		leaves.setVec3("uEyePos", camera.position);
-		leaves.setFloat("uMaterial.Ka", material.Ka);
-		leaves.setFloat("uMaterial.Kd", material.Kd);
-		leaves.setFloat("uMaterial.Ks", material.Ks);
-		leaves.setFloat("uMaterial.Shininess", material.Shininess);
-		leaves.setVec3("uLightDir", lighting.lightDir);
-		leaves.setVec3("uLightColor", lighting.lightColor);
-
-		planeTransform.position = glm::vec3(-3.0, 0.0, 0.0);
-		planeTransform.rotation = glm::vec3(glm::radians(90.0), 0.0f, 0.0f);
-		leaves.setMat4("uModel", planeTransform.modelMatrix());
-		leaves.setMat4("uViewProjection", camera.projectionMatrix() * camera.viewMatrix());
-		planeMesh.draw();
-
-
-		cameraController.move(window, &camera, deltaTime);
-		glBindVertexArray(0);
-
-		//-----------------------------------------------------------------------------------
-
-		glBindFramebuffer(GL_FRAMEBUFFER, outlineBuffer.getFbo());
+		if (postProcessing.post)
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, outlineBuffer.getFbo());
+		}
 		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 		glDisable(GL_DEPTH_TEST);
@@ -328,52 +447,57 @@ int main() {
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 		glBindVertexArray(0);
 
-		// -----------------------------------------------------------------------------------
+		if (postProcessing.post == true)
+		{
 
-		glBindFramebuffer(GL_FRAMEBUFFER, gKuwaharaBuffer.getFbo());
-		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+			// -----------------------------------------------------------------------------------
 
-		sobel.use();
-		sobel.setFloat("uEdge", postProcessing.edge);
-		sobel.setInt("uEdgeOn", postProcessing.edgeOn);
-		sobel.setFloat("uThreshold", postProcessing.threshold);
+			glBindFramebuffer(GL_FRAMEBUFFER, gKuwaharaBuffer.getFbo());
+			glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
 
-		glBindVertexArray(dummyVAO);
-		glBindTexture(GL_TEXTURE_2D, outlineBuffer.getColorTexturebuffer());
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+			sobel.use();
+			sobel.setFloat("uEdge", postProcessing.edge);
+			sobel.setInt("uEdgeOn", postProcessing.edgeOn);
+			sobel.setFloat("uThreshold", postProcessing.threshold);
 
-		//-----------------------------------------------------------------------------------
+			glBindVertexArray(dummyVAO);
+			glBindTexture(GL_TEXTURE_2D, outlineBuffer.getColorTexturebuffer());
+			glDrawArrays(GL_TRIANGLES, 0, 3);
 
-		glBindFramebuffer(GL_FRAMEBUFFER, overlayBuffer.getFbo());
-		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+			//-----------------------------------------------------------------------------------
 
-		kuwahara.use();
-		kuwahara.setInt("uBKuwaharaOn", postProcessing.bKuwaharaOn);
-		kuwahara.setInt("uBRadius", postProcessing.bRadius);
-		kuwahara.setInt("uAKuwaharaOn", postProcessing.aKuwaharaOn);
-		kuwahara.setInt("uARadius", postProcessing.aRadius);
-		kuwahara.setInt("uSectors", postProcessing.SECTORS);
-		kuwahara.setFloat("uSharpness", postProcessing.sharpeness);
-		kuwahara.setFloat("uEccentricity", postProcessing.eccentricity);
-		kuwahara.setFloat("uMix", postProcessing.mixValue);
+			glBindFramebuffer(GL_FRAMEBUFFER, overlayBuffer.getFbo());
+			glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
 
-		glBindVertexArray(dummyVAO);
-		glBindTexture(GL_TEXTURE_2D, gKuwaharaBuffer.getColorTexturebuffer());
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+			kuwahara.use();
+			kuwahara.setInt("uBKuwaharaOn", postProcessing.bKuwaharaOn);
+			kuwahara.setInt("uBRadius", postProcessing.bRadius);
+			kuwahara.setInt("uAKuwaharaOn", postProcessing.aKuwaharaOn);
+			kuwahara.setInt("uARadius", postProcessing.aRadius);
+			kuwahara.setInt("uSectors", postProcessing.SECTORS);
+			kuwahara.setFloat("uSharpness", postProcessing.sharpeness);
+			kuwahara.setFloat("uEccentricity", postProcessing.eccentricity);
+			kuwahara.setFloat("uMix", postProcessing.mixValue);
 
-		//-----------------------------------------------------------------------------------
-		
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+			glBindVertexArray(dummyVAO);
+			glBindTexture(GL_TEXTURE_2D, gKuwaharaBuffer.getColorTexturebuffer());
+			glDrawArrays(GL_TRIANGLES, 0, 3);
 
-		overlay.use();
-		
-		glBindVertexArray(dummyVAO);
-		glBindTexture(GL_TEXTURE_2D, overlayBuffer.getColorTexturebuffer());
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+			//-----------------------------------------------------------------------------------
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+
+			overlay.use();
+			overlay.setInt("uOverlayOn", postProcessing.paperOverlay);
+
+			glBindVertexArray(dummyVAO);
+			glBindTexture(GL_TEXTURE_2D, overlayBuffer.getColorTexturebuffer());
+			glDrawArrays(GL_TRIANGLES, 0, 3);	
+		}
 
 		drawUI();
 		glfwSwapBuffers(window);
@@ -388,12 +512,16 @@ void drawUI() {
 
 	ImGui::Begin("Settings");
 
+	if (ImGui::CollapsingHeader("Scene Selector"))
+	{
+		ImGui::SliderInt("Scene", &scene, Scene::DEFAULT, Scene::FORZA);
+	}
+
 	if (ImGui::CollapsingHeader("Lighting"))
 	{
 		ImGui::DragFloat3("Light Position", &lighting.lightDir.x, 0.1f);
 		ImGui::ColorEdit3("Light Color", &lighting.lightColor.r, 0.1f);
 	}
-
 
 	if (ImGui::CollapsingHeader("Material"))
 	{
@@ -405,10 +533,12 @@ void drawUI() {
 
 	if (ImGui::CollapsingHeader("Post Processing"))
 	{
+		ImGui::Checkbox("Post Processing Effects ON/OFF", &postProcessing.post);
 		ImGui::Checkbox("Basic Kuwahara ON/OFF", &postProcessing.bKuwaharaOn);
 		ImGui::Checkbox("Anisotropic Kuwahara ON/OFF", &postProcessing.aKuwaharaOn);
 		ImGui::Checkbox("Edge ON/OFF", &postProcessing.edgeOn);
 		ImGui::Checkbox("Gamma ON/OFF", &postProcessing.gammaOn);
+		ImGui::Checkbox("Paper Texture ON/OFF", &postProcessing.paperOverlay);
 		ImGui::SliderInt("Basic Kuwahara radius", &postProcessing.bRadius, 0, 20);
 		ImGui::SliderInt("Anisotropic Kuwahara radius", &postProcessing.aRadius, 0, 10);
 		ImGui::SliderFloat("Sharpness", &postProcessing.sharpeness, 0.0f, 1.0f);
@@ -416,8 +546,8 @@ void drawUI() {
 		ImGui::SliderFloat("Mix Kuwahara", &postProcessing.mixValue, 0.0f, 1.0f);
 		ImGui::SliderFloat("Edge", &postProcessing.edge, 0.0f, 1000.0f);
 		ImGui::SliderFloat("Threshold", &postProcessing.threshold, 0.0f, 1.0f);
-		ImGui::SliderFloat("Hull Outlines", &hullThickness, 0.01, 0.05);
-		ImGui::SliderFloat("Gamma", &postProcessing.gamma, 0.0f, 10.0f);
+		ImGui::SliderFloat("Hull Outlines", &hullThickness, 0.0, 0.05);
+		//ImGui::SliderFloat("Gamma", &postProcessing.gamma, 0.0f, 10.0f);
 	}
 
 
@@ -477,6 +607,14 @@ GLFWwindow* initWindow(const char* title, int width, int height) {
 void resetCamera(ew::Camera* camera, ew::CameraController* controller)
 {
 	camera->position = glm::vec3(0.0f, 0.0f, 5.0f);
+	camera->target = glm::vec3(0.0f);
+	controller->yaw = 0.0f;
+	controller->pitch = 0.0f;
+}
+
+void setCamera(ew::Camera* camera, ew::CameraController* controller)
+{
+	camera->position = glm::vec3(0.0f, 0.0f, 7.0f);
 	camera->target = glm::vec3(0.0f);
 	controller->yaw = 0.0f;
 	controller->pitch = 0.0f;

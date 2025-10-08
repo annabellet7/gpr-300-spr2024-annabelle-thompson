@@ -17,6 +17,7 @@ out Surface
 	vec2 TexCoord;
 	vec3 TangentEyePos;
 	vec3 TangnetLightDir;
+	vec3 Normal;
 }vs_out;
 
 void main()
@@ -32,6 +33,7 @@ void main()
 	vs_out.TangentFragPos = TBN * vec3(uModel * vec4(vPos, 1.0));
 
 	vs_out.TexCoord = vTexCoord;
+	vs_out.Normal = vNormal;
 
 	gl_Position = uViewProjection * uModel * vec4(vPos, 1.0);
 }

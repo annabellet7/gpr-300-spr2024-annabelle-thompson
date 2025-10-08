@@ -8,6 +8,7 @@ in Surface
 	vec2 TexCoord;
 	vec3 TangentEyePos;
 	vec3 TangnetLightDir;
+    vec3 Normal;
 }fs_in;
 
 uniform sampler2D uMainTex;
